@@ -16,6 +16,26 @@ public class WarehouseController : ControllerBase
     }
 
     [HttpPost("add")]
+    public async Task<IActionResult> AddProductAsync(WarehouseDto warehouse)
+    {
+        try
+        {
+            var newId = await _warehouseService.AddProductAsync(warehouse);
+            return Ok(new { NewId = newId });
+        }
+        catch (ArgumentException e)
+        {
+            return BadRequest(e.Message);
+        }
+        catch (Exception e )
+        {
+            return StatusCode(500, "Something went wrong "+e.Message);
+        }
+    }
+    
+    
+
+    [HttpPost("addFromProcedure")]
     public async Task<IActionResult> AddProductUsingProcedure([FromBody]WarehouseDto warehouse)
     {
         
@@ -28,9 +48,9 @@ public class WarehouseController : ControllerBase
         {
             return BadRequest(e.Message);
         }
-        catch (Exception)
+        catch (Exception e )
         {
-            return StatusCode(500, "Something went wrong");
+            return StatusCode(500, "Something went wrong " +e.Message );
         }
     }
     

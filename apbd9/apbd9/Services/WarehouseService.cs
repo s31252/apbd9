@@ -12,7 +12,7 @@ public class WarehouseService : IWarehouseService
         "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=master;Integrated Security=True;";
 
 
-    public async Task AddProductAsync(WarehouseDto warehouse)
+    public async Task<int> AddProductAsync(WarehouseDto warehouse)
     {
         await using SqlConnection connection = new SqlConnection(_connectionString);
         await using SqlCommand command = new SqlCommand();
@@ -22,6 +22,9 @@ public class WarehouseService : IWarehouseService
 
         DbTransaction transaction = await connection.BeginTransactionAsync();
         command.Transaction = transaction as SqlTransaction;
+        if (command.Transaction == null)
+            throw new Exception("Transaction assignment failed");
+
 
         try
         {
@@ -52,7 +55,7 @@ public class WarehouseService : IWarehouseService
             command.Parameters.Clear();
             command.CommandText = @"
             SELECT IdOrder 
-            FROM Order
+            FROM [Order]
             WHERE IdProduct = @IdProduct
             AND Amount = @Amount
             AND CreatedAt<@CreatedAt";
@@ -64,17 +67,55 @@ public class WarehouseService : IWarehouseService
             if (orderinho == null)
                 throw new ArgumentException("Order not found");
             
+            int orderId = Convert.ToInt32(orderinho);
 
+            
             command.Parameters.Clear();
             command.CommandText = @"
             SELECT IdOrder
             FROM Product_Warehouse
             WHERE IdOrder = @IdOrder";
-            command.Parameters.AddWithValue("@IdOrder", orderinho);
-            if ((int)await command.ExecuteScalarAsync() > 0)
+            command.Parameters.AddWithValue("@IdOrder",orderId);
+            if (await command.ExecuteScalarAsync() != null )
                 throw new ArgumentException("Order already fulfilled");
 
+            command.Parameters.Clear();
+            command.CommandText = @"
+            UPDATE [Order]
+            SET FulfilledAt =@Date
+            WHERE IdOrder = @IdOrder";
+            command.Parameters.AddWithValue("@Date", DateTime.Now);
+            command.Parameters.AddWithValue("@IdOrder", orderId);
+            await command.ExecuteNonQueryAsync();
+            
+            command.Parameters.Clear();
+            command.CommandText = "SELECT Price FROM Product WHERE IdProduct = @IdProduct";
+            command.Parameters.AddWithValue("@IdProduct", warehouse.IdProduct);
+            var priceObj = await command.ExecuteScalarAsync();
+
+            if (priceObj == null)
+                throw new ArgumentException("Cannot retrieve product price.");
+            
+            decimal price = Convert.ToDecimal(priceObj);
+            decimal totalPrice = price * warehouse.Amount;
+            
+            command.Parameters.Clear();
+            command.CommandText = @"
+            INSERT INTO Product_Warehouse(IdWarehouse, IdProduct, IdOrder, Amount, Price, CreatedAt)
+            VALUES (@IdWarehouse, @IdProduct, @IdOrder, @Amount, @Price, @CreatedAt);
+            SELECT SCOPE_IDENTITY();";
+
+            command.Parameters.AddWithValue("@IdWarehouse", warehouse.IdWarehouse);
+            command.Parameters.AddWithValue("@IdProduct", warehouse.IdProduct);
+            command.Parameters.AddWithValue("@IdOrder", orderId);
+            command.Parameters.AddWithValue("@Amount", warehouse.Amount);
+            command.Parameters.AddWithValue("@Price", totalPrice);
+            command.Parameters.AddWithValue("@CreatedAt", DateTime.Now);
+
+            var result = await command.ExecuteScalarAsync();
             await transaction.CommitAsync();
+            return Convert.ToInt32(result);
+
         }
         catch (Exception e)
         {
