@@ -1,6 +1,6 @@
 ﻿namespace apbd9.Models;
 
-public class Warehouse
+public class WarehouseDto
 {
     public int IdProduct { get; set; }
     public int IdWarehouse{ get; set; }
